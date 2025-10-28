@@ -56,13 +56,15 @@ class AugmentedMLDEmodel():
 
         anchor_data = pd.read_csv(self._EC_file)
         anchor_data.sort_values('Mutations', inplace=True)
+        evc_mutations_set = set(anchor_data['Mutations'])
 
-        self._model_scope_mutations = list(anchor_data['Mutations'])
-        self._model_scope_set = set(anchor_data['Mutations'])
-        
         training_data = pd.read_excel(self._training_data_file, keep_default_na=False)
-        original_train_count = len(training_data)
-        training_data = training_data[training_data['AminoAcid'].isin(self._model_scope_set)]
+        training_mutations_set = set(training_data['AminoAcid'])
+
+        self._model_scope_set = evc_mutations_set.union(training_mutations_set)
+
+        self._model_scope_mutations = sorted(list(self._model_scope_set))
+        
         self._training_data = training_data
         
         if self._test_data_file != None:
@@ -96,8 +98,8 @@ class AugmentedMLDEmodel():
 
             # Return a Series, indexed by Mutation, for easy lookup
             aligned_series = pd.Series(raw_scaled.flatten(), index=master_series.index)
-            aligned_series['Regularized Features'] = -1 * aligned_series * np.sqrt(1 / self._regularization_coeff)
-            return aligned_series['Regularized Features']
+            regularized_features = -1 * aligned_series * np.sqrt(1 / self._regularization_coeff)
+            return regularized_features
         
         if self._EC_file != None:
             self._EC_predictions = prep_data(self._EC_file)
