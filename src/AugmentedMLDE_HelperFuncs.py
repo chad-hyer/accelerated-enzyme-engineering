@@ -210,10 +210,24 @@ def encode(data, sequence_length, wt_sequence):
     
     
     ## Georgiev encodings
-    unnorm_georgiev = np.empty([len(all_combos), n, 19])
-    for i, combo in enumerate(all_combos):
-        unnorm_georgiev[i] = [[georgiev_param[character] for georgiev_param in GEORGIEV_PARAMETERS] for character in combo]
+    wt_georgiev = np.empty([sequence_length, 19])
+    for i, aa in enumerate(wt_sequence):
+        wt_georgiev[i] = [param[aa] for param in GEORGIEV_PARAMETERS]
     
+    unnorm_georgiev = np.empty([len(all_combos), sequence_length, 19])
+
+    for i, combo_string in enumerate(all_combos):
+        mutant_encoding = np.copy(wt_georgiev)
+        match = mutation_regex.match(combo_string)
+        if not match:
+            unnorm_georgiev[i] = mutant_encoding
+            continue
+        _, pos_str, new_aa = match.groups()
+        pos_0_indexed = int(pos_str) - 1
+
+        mutant_encoding[pos_0_indexed] = [param[new_aa] for param in GEORGIEV_PARAMETERS]
+        unnorm_georgiev[i] = mutant_encoding
+
     norm_georgiev = normalize_encodings(unnorm_georgiev)
     
     if data.empty == True: 
@@ -231,9 +245,25 @@ def encode(data, sequence_length, wt_sequence):
     
     
     ## ZScale encodings
-    unnorm_zscale = np.empty([len(all_combos), n, 5])
-    for i, combo in enumerate(all_combos):
-        unnorm_zscale[i] = [ZSCALE[character] for character in combo]
+    wt_zscale = np.empty([sequence_length], 5)
+    for i, ass in enumerate(wt_sequence):
+        wt_zscale[i] = ZSCALE[aa]
+    
+    unnorm_zscale = np.empty([len(all_combos), sequence_length, 5])
+
+    for i, combo_string in enumerate(all_combos):
+        mutant_encoding = np.copy(wt_zscale)
+        match = mutation_regex.match(combo_string)
+        if not match:
+            unnorm_zscale[i] = mutant_encoding
+            continue
+
+        _, pos_str, new_aa = match.groups()
+        pos_0_indexed = int(pos_str) - 1
+
+        mutant_encoding[pos_0_indexed] = ZSCALE[new_aa]
+
+        unnorm_zscale[i] = mutant_encoding
 
     norm_zscale = normalize_encodings(unnorm_zscale)    
     
@@ -252,9 +282,26 @@ def encode(data, sequence_length, wt_sequence):
     
     
     ## VHSE Encodings
-    unnorm_vhse = np.empty([len(all_combos), n, 8])
-    for i, combo in enumerate(all_combos):
-        unnorm_vhse[i] = [VHSE[character] for character in combo]
+    wt_vhse = np.empty([sequence_length, 8])
+    for i, aa in enumerate(wt_sequence):
+        wt_vhse[i] = VHSE[aa]
+
+    unnorm_vhse = np.empty([len(all_combos), sequence_length, 8])
+
+    for i, combo_string in enumerate(all_combos):
+        mutant_encoding = np.copy(wt_vhse)
+
+        match = mutation_regex.match(combo_string)
+        if not match:
+            unnorm_vhse[i] = mutant_encoding
+            continue
+
+        _, pos_str, new_aa = match.groups()
+        pos_0_indexed = int(pos_str) - 1
+
+        mutant_encoding[pos_0_indexed] = VHSE[new_aa]
+
+        unnorm_vhse[i] = mutant_encoding
 
     norm_vhse = normalize_encodings(unnorm_vhse)    
     
@@ -273,9 +320,24 @@ def encode(data, sequence_length, wt_sequence):
     
     
     ## Physical Descriptors Encodings
-    unnorm_pd = np.empty([len(all_combos), n, 3])
-    for i, combo in enumerate(all_combos):
-        unnorm_pd[i] = [PYHSICAL_DESCRIPTORS[character] for character in combo]
+    wt_pd = np.empty([sequence_length, 3])
+    for i, aa in enumerate(wt_sequence):
+        wt_pd[i] = PYHSICAL_DESCRIPTORS[aa]
+
+    unnorm_pd = np.empty([len(all_combos), sequence_length, 3])
+
+    for i, combo_string in enumerate(all_combos):
+        mutant_encoding = np.copy(wt_pd)
+        match = mutation_regex.match(combo_string)
+        if not match:
+            unnorm_pd[i] = mutant_encoding
+            continue
+
+        _, pos_str, new_aa = match.groups()
+        pos_0_indexed = int(pos_str) - 1
+
+        mutant_encoding[pos_0_indexed] = PYHSICAL_DESCRIPTORS[new_aa]
+        unnorm_pd[i] = mutant_encoding
 
     norm_pd = normalize_encodings(unnorm_pd)    
     
