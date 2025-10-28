@@ -39,13 +39,14 @@ class AugmentedMLDEmodel():
         Given a specific augmented model (identified in compare_and_predict), return predictions for the entire combinatorial space
     """
     
-    def __init__(self, training_data_file, test_data_file, num_positions, EC_file, Maestro_file, ESM_file):
+    def __init__(self, training_data_file, test_data_file, sequence_length, wt_sequence, EC_file, Maestro_file, ESM_file):
         self._training_data_file = training_data_file
         self._test_data_file = test_data_file
         self._EC_file = EC_file
         self._Maestro_file = Maestro_file
         self._ESM_file = ESM_file
-        self._num_positions = num_positions
+        self._sequence_length = sequence_length
+        self._wt_sequence = wt_sequence
         self._data_normalization_type = 'Standardization'
         self._random_seed = 42
         self._regularization_coeff = 10**-8
@@ -97,22 +98,29 @@ class AugmentedMLDEmodel():
         ndcg = []
         alpha = []
         
-        all_combos = list(product(ALL_AAS, repeat = self._num_positions))
-        combo = ["".join(combo) for combo in all_combos]
+        all_combos_list = []
+        for i in range(self._sequence_length):
+            pos_1_indexed = i + 1
+            original_aa = self._wt_sequence[i]
+            for new_aa in ALL_AAS:
+                mutation_string = f"{original_aa}{pos_1_indexed}{new_aa}"
+                all_combos_list.append(mutation_string)
+        combo = all_combos_list
+
         predictions = {'Mutation':combo}
         predictions_test = {'Mutation': self._test_data['AminoAcid'], 'Actual': self._test_data['Activity']}
         
         for encoding in encoding_list:       
             #encode and normalize training data
-            x_train = encode(self._training_data, self._num_positions)[encoding]
+            x_train = encode(self._training_data, self._sequence_length, self._wt_sequence)[encoding]
             y_train = normalize_data(self._training_data, self._data_normalization_type)
             
             #data and encodings to predict withheld ISM data (test data)
-            x_test = encode(self._test_data, self._num_positions)[encoding]
+            x_test = encode(self._test_data, self._sequence_length, self._wt_sequence)[encoding]
             y_actual = normalize_data(self._test_data, self._data_normalization_type)
             
             #encodings to predict entire combinatorial space
-            x_all = encode(pd.DataFrame(), self._num_positions)[encoding]
+            x_all = encode(pd.DataFrame(), self._sequence_length, self._wt_sequence)[encoding]
             
             #generating encodings for augmented models using zero shot predictions
             ec_predictions_train = np.array([[self._EC_predictions.loc[aa] for aa in self._training_data['AminoAcid']]])
@@ -225,8 +233,15 @@ class AugmentedMLDEmodel():
         """
         alpha = []
         
-        all_combos = list(product(ALL_AAS, repeat = self._num_positions))
-        combo = ["".join(combo) for combo in all_combos]
+        all_combos_list = []
+        for i in range(self._sequence_length):
+            pos_1_indexed = i + 1
+            original_aa = self._wt_sequence[i]
+            for new_aa in ALL_AAS:
+                mutation_string = f"{original_aa}{pos_1_indexed}{new_aa}"
+                all_combos_list.append(mutation_string)
+        
+        combo = all_combos_list
         
         #generate all encodings for the specified model and encoding type
         #encode and normalize training data
