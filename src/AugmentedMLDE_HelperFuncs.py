@@ -7,6 +7,7 @@ Created on Sat Jan 22 17:23:19 2022
 
 import numpy as np
 from itertools import product
+import re
 
 ALL_AAS = ("A", "C", "D", "E", "F", "G", "H", "I", "K", "L", "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y")
 
@@ -144,7 +145,7 @@ def normalize_encodings(unnormalized_encodings):
     return normalized_encodings
 
 
-def encode(data, positions):
+def encode(data, sequence_length, wt_sequence):
     """
     Parameters
     ----------
@@ -159,20 +160,40 @@ def encode(data, positions):
     # Import data
     if data.empty == False:
         sequences = data['AminoAcid'].values
-    n = positions
+    mutation_regex = re.compile(r"([A-Z])(\d+)([A-Z])")
+
+    ALL_AAS_DICT = {aa: i for i, aa in enumerate(ALL_AAS)}
     
     # Build a dictionary that links the identity of a combination to that combination's index in an encoding array, and vice versa.
-    all_combos = list(product(ALL_AAS, repeat = n))
+    all_combos = []
+    for i in range(sequence_length):
+        pos_1_indexed = i + 1
+        original_aa = wt_sequence[i]
+        for new_aa in ALL_AAS:
+            mutation_string = f"{original_aa}{pos_1_indexed}{new_aa}"
+            all_combos.append(mutation_string)
     combo_to_index = {"".join(combo): i for i, combo in enumerate(all_combos)}
     
     ## Onehot encodings
-    one_hot_dict = {aa: i for i, aa in enumerate(ALL_AAS)}
-    onehot_array = np.zeros([len(all_combos), n, 20])
-        
-    for i, combo in enumerate(all_combos):
-        for j, character in enumerate(combo):
-            onehot_ind = one_hot_dict[character]
-            onehot_array[i, j, onehot_ind] = 1
+    wt_onehot = np.zeros([sequence_length, 20])
+    for i, aa in enumerate(wt_sequence):
+        wt_onehot[i, ALL_AAS_DICT[aa]] = 1
+    
+    onehot_array = np.zeros([len(all_combos), sequence_length, 20])
+    for i, combo_string in enumerate(all_combos):
+        mutant_encoding = np.copy(wt_onehot)
+        match = mutation_regex.match(combo_string)
+        if not match:
+            print(f"Warning: Could not parse {combo_string}")
+            onehot_array[i] = mutant_encoding
+            continue
+        orig_aa, pos_str, new_aa = match.groups()
+        pos_0_indexed = int(pos_str) - 1
+
+        mutant_encoding[pos_0_indexed, ALL_AAS_DICT[orig_aa]] = 0
+        mutant_encoding[pos_0_indexed, ALL_AAS_DICT[new_aa]] = 1
+
+        onehot_array[i] = mutant_encoding
     
     if data.empty == True: 
         o_encode_array = onehot_array
