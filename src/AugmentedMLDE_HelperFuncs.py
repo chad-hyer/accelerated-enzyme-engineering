@@ -145,7 +145,7 @@ def normalize_encodings(unnormalized_encodings):
     return normalized_encodings
 
 
-def encode(data, sequence_length, wt_sequence):
+def encode(data, wt_sequence, model_scope_mutations):
     """
     Parameters
     ----------
@@ -165,15 +165,10 @@ def encode(data, sequence_length, wt_sequence):
     ALL_AAS_DICT = {aa: i for i, aa in enumerate(ALL_AAS)}
     
     # Build a dictionary that links the identity of a combination to that combination's index in an encoding array, and vice versa.
-    all_combos = []
-    for i in range(sequence_length):
-        pos_1_indexed = i + 1
-        original_aa = wt_sequence[i]
-        for new_aa in ALL_AAS:
-            mutation_string = f"{original_aa}{pos_1_indexed}{new_aa}"
-            all_combos.append(mutation_string)
+    all_combos = model_scope_mutations
     combo_to_index = {"".join(combo): i for i, combo in enumerate(all_combos)}
-    
+    sequence_length = len(wt_sequence)
+
     ## Onehot encodings
     wt_onehot = np.zeros([sequence_length, 20])
     for i, aa in enumerate(wt_sequence):
