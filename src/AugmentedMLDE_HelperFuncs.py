@@ -136,7 +136,17 @@ def normalize_encodings(unnormalized_encodings):
     # Mean-center and unit variance scale the embeddings.
     means = flat_encodings.mean(axis=0)
     stds = flat_encodings.std(axis=0)
-    normalized_flat_encodings = (flat_encodings - means)/stds
+    # Create a copy of stds
+    stds_safe = np.copy(stds)
+
+    # Replace 0s with 1s. This prevents division by zero.
+    stds_safe[stds_safe == 0] = 1 
+
+    # Perform the safe division
+    normalized_flat_encodings = (flat_encodings - means) / stds_safe
+
+    # Just in case, replace any NaNs that might have slipped through
+    normalized_flat_encodings = np.nan_to_num(normalized_flat_encodings, nan=0.0)
     
     # Reshape the normalized embeddings back to the original form
     normalized_encodings = np.reshape(normalized_flat_encodings,
@@ -240,7 +250,7 @@ def encode(data, wt_sequence, model_scope_mutations):
     
     
     ## ZScale encodings
-    wt_zscale = np.empty([sequence_length], 5)
+    wt_zscale = np.empty([sequence_length, 5])
     for i, ass in enumerate(wt_sequence):
         wt_zscale[i] = ZSCALE[aa]
     

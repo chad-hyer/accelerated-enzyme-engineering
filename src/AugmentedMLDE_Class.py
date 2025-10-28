@@ -7,7 +7,7 @@ Created on Sat Apr  2 16:54:09 2022
 #code inspired by the wonderful https://github.com/chloechsu/combining-evolutionary-and-assay-labelled-data 
 #and https://github.com/fhalab/MLDE
 
-from src.AugmentedMLDE_HelperFuncs import encode, normalize_data, ALL_AAS
+from AugmentedMLDE_HelperFuncs import encode, normalize_data, ALL_AAS
 import pandas as pd
 import numpy as np
 from itertools import product
@@ -55,6 +55,7 @@ class AugmentedMLDEmodel():
         self._predictions_df = None
 
         anchor_data = pd.read_csv(self._EC_file)
+        anchor_data.rename(columns={'mutant': 'Mutations', 'prediction_epistatic': 'Predictions'}, inplace=True)
         anchor_data.sort_values('Mutations', inplace=True)
         evc_mutations_set = set(anchor_data['Mutations'])
 
@@ -79,6 +80,7 @@ class AugmentedMLDEmodel():
             """
             sc = StandardScaler()
             raw = pd.read_csv(file_loc)
+            raw.rename(columns={'mutant': 'Mutations', 'prediction_epistatic': 'Predictions'}, inplace=True)
             
             # Create a pandas Series from the raw file
             raw_series = pd.Series(raw['Predictions'].values, index=raw['Mutations'])
@@ -142,19 +144,33 @@ class AugmentedMLDEmodel():
             x_all = encode(pd.DataFrame(), self._wt_sequence, self._model_scope_mutations)[encoding]
             
             #generating encodings for augmented models using zero shot predictions
-            ec_predictions_train = np.array([[self._EC_predictions.loc[aa] for aa in self._training_data['AminoAcid']]])
-            ec_predictions_test = np.array([[self._EC_predictions.loc[aa] for aa in self._test_data['AminoAcid']]])
-            ec_predictions_all = np.array([self._EC_predictions])
+            has_ec = hasattr(self, '_EC_predictions')
+            has_energy = hasattr(self, '_Energy_predictions')
+            has_esm = hasattr(self, '_ESM_predictions')
 
-            energy_predictions_train = np.array([[self._Energy_predictions.loc[aa] for aa in self._training_data['AminoAcid']]])
-            energy_predictions_test = np.array([[self._Energy_predictions.loc[aa] for aa in self._test_data['AminoAcid']]])    
-            energy_predictions_all = np.array([self._Energy_predictions])
+            if has_ec:
+                ec_predictions_train = np.array([[self._EC_predictions.loc[aa] for aa in self._training_data['AminoAcid']]])
+                ec_predictions_test = np.array([[self._EC_predictions.loc[aa] for aa in self._test_data['AminoAcid']]])
+                ec_predictions_all = np.array([self._EC_predictions])
 
-            esm_predictions_train = np.array([[self._ESM_predictions.loc[aa] for aa in self._training_data['AminoAcid']]])
-            esm_predictions_test = np.array([[self._ESM_predictions.loc[aa] for aa in self._test_data['AminoAcid']]])
-            esm_predictions_all = np.array([self._ESM_predictions])
+            if has_energy:
+                energy_predictions_train = np.array([[self._Energy_predictions.loc[aa] for aa in self._training_data['AminoAcid']]])
+                energy_predictions_test = np.array([[self._Energy_predictions.loc[aa] for aa in self._test_data['AminoAcid']]])    
+                energy_predictions_all = np.array([self._Energy_predictions])
+
+            if has_esm:
+                esm_predictions_train = np.array([[self._ESM_predictions.loc[aa] for aa in self._training_data['AminoAcid']]])
+                esm_predictions_test = np.array([[self._ESM_predictions.loc[aa] for aa in self._test_data['AminoAcid']]])
+                esm_predictions_all = np.array([self._ESM_predictions])
             
             for model in model_list:
+                if model == 'AugmentedEC' and not has_ec: continue
+                if model == 'AugmentedEnergy' and not has_energy: continue
+                if model == 'AugmentedESM' and not has_esm: continue
+                if model == 'AugmentedEC_Energy' and not (has_ec and has_energy): continue
+                if model == 'AugmentedEC_ESM' and not (has_ec and has_esm): continue
+                if model == 'AugmentedESM_Energy' and not (has_esm and has_energy): continue
+                if model == 'AugmentedEC_Energy_ESM' and not (has_ec and has_energy and has_esm): continue
                 if model == 'Simple':
                     x_train_model = x_train
                     x_test_model = x_test
@@ -251,6 +267,21 @@ class AugmentedMLDEmodel():
             self._predictions_df - model predictions for the entire combinatorial space
         """
         alpha = []
+        has_ec = hasattr(self, '_EC_predictions')
+        has_energy = hasattr(self, '_Energy_predictions')
+        has_esm = hasattr(self, '_ESM_predictions')
+
+        if 'EC' in model and not has_ec:
+            print(f"Error: Model '{model}' requires EC file, but it was not loaded.")
+            return # Stop the function
+
+        if 'Energy' in model and not has_energy:
+            print(f"Error: Model '{model}' requires Energy (Maestro) file, but it was not loaded.")
+            return # Stop the function
+
+        if 'ESM' in model and not has_esm:
+            print(f"Error: Model '{model}' requires ESM file, but it was not loaded.")
+            return # Stop the function
         
         combo = self._model_scope_mutations
         
