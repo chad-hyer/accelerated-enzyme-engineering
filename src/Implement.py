@@ -53,7 +53,7 @@ model_metrics.to_csv('ssm_model_metrics.csv', index=False)
 # --- 6. (Optional) Train and Predict with the Best Model ---
 # Let's say 'AugmentedEC_ESM' with 'ZScales' was your best model
 print("Training final model...")
-model.train_and_predict(model='AugmentedEC_ESM', encoding='One Hot')
+model.train_and_predict(model='AugmentedEC', encoding='One Hot')
 
 # Get the final predictions for the entire model scope
 all_predictions_df = model._predictions_df
