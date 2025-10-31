@@ -16,6 +16,7 @@ from sklearn.model_selection import GridSearchCV, RepeatedKFold
 from sklearn.preprocessing import StandardScaler
 from scipy import stats
 import matplotlib.pyplot as plt
+import re
 
 model_list = ['Simple', 'AugmentedESM', 'AugmentedEC', 'AugmentedEnergy', 'AugmentedEC_Energy', 'AugmentedESM_Energy', 'AugmentedEC_ESM', 'AugmentedEC_Energy_ESM']
 encoding_list = ['One Hot', 'Georgiev', 'ZScales', 'VHSE', 'Physical Descriptors'] 
@@ -60,6 +61,13 @@ class AugmentedMLDEmodel():
         evc_mutations_set = set(anchor_data['Mutations'])
 
         training_data = pd.read_excel(self._training_data_file, keep_default_na=False)
+        def is_wt(mutation_str):
+            # Use a regex to match (Letter)(Number)(Letter)
+            match = re.match(r"([A-Z])(\d+)([A-Z])", str(mutation_str))
+            # Return True if it's a match AND the letters are the same
+            return match and match.group(1) == match.group(3)
+
+        training_data = training_data[~training_data['AminoAcid'].apply(is_wt)]
         training_mutations_set = set(training_data['AminoAcid'])
 
         self._model_scope_set = evc_mutations_set.union(training_mutations_set)
