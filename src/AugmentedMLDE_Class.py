@@ -18,6 +18,10 @@ from scipy import stats
 import matplotlib.pyplot as plt
 import re
 
+import time
+from itertools import product
+from joblib import Parallel, delayed
+
 model_list = ['Simple', 'AugmentedESM', 'AugmentedEC', 'AugmentedEnergy', 'AugmentedEC_Energy', 'AugmentedESM_Energy', 'AugmentedEC_ESM', 'AugmentedEC_Energy_ESM']
 encoding_list = ['One Hot', 'Georgiev', 'ZScales', 'VHSE', 'Physical Descriptors'] 
 
@@ -118,7 +122,7 @@ class AugmentedMLDEmodel():
         if self._ESM_file != None:
             self._ESM_predictions = prep_data(self._ESM_file)
           
-   
+    '''
     def compare_and_predict(self, ShowPlots = False):
         """
         Given a train and test data set, calculates NDCG and spearman correlation for a variety of zeroshot predictors and encodings.
@@ -212,6 +216,7 @@ class AugmentedMLDEmodel():
                     x_test_model = np.concatenate((ec_predictions_test.T,energy_predictions_test.T,esm_predictions_test.T,x_test), axis=1)
                     x_all_model = np.concatenate((ec_predictions_all.T,energy_predictions_all.T,esm_predictions_all.T,x_all), axis=1)
                 
+                """
                 #hyperparameter tuning of ridge regression model using k-fold cv of training data
                 cv = RepeatedKFold(n_splits=5, n_repeats=20, random_state=self._random_seed)
                 clf = linear_model.Ridge()
@@ -219,6 +224,18 @@ class AugmentedMLDEmodel():
                 search = GridSearchCV(clf, parameters, scoring='neg_mean_squared_error', n_jobs=-1, cv=cv, verbose=False)
                 hyper_tune = search.fit(x_train_model, y_train)
                 tuned_alpha = hyper_tune.best_estimator_
+                alpha.append(tuned_alpha)
+                """
+
+                alphas_to_test = np.linspace(0.01, 100, 100)
+
+                # Use RidgeCV with leave-one-out cross-validation (cv=None)
+                # It's highly optimized for this exact task
+                clf_cv = linear_model.RidgeCV(alphas=alphas_to_test, cv=None)
+                hyper_tune = clf_cv.fit(x_train_model, y_train)
+
+                # Get the best alpha it found
+                tuned_alpha = hyper_tune.alpha_
                 alpha.append(tuned_alpha)
                 
                 #make focused predictions on withheld test data and plot actual vs. predictions
@@ -264,7 +281,185 @@ class AugmentedMLDEmodel():
         self._model_metrics = model_metrics
             
         return
-   
+    '''
+
+    def compare_and_predict(self, ShowPlots = False):
+        """
+        [Parallelized] Given a train and test data set, calculates NDCG and spearman correlation 
+        for a variety of zeroshot predictors and encodings.
+        """
+        print("Starting parallel compare_and_predict...")
+        t0 = time.time()
+
+        # --- 1. Load all data ONCE ---
+        
+        # Create a dictionary for all encodings
+        encodings = {}
+        for encoding_name in encoding_list:
+            encodings[encoding_name] = {
+                'x_train': encode(self._training_data, self._wt_sequence, self._model_scope_mutations)[encoding_name],
+                'x_test': encode(self._test_data, self._wt_sequence, self._model_scope_mutations)[encoding_name],
+                'x_all': encode(pd.DataFrame(), self._wt_sequence, self._model_scope_mutations)[encoding_name]
+            }
+        
+        y_train = normalize_data(self._training_data, self._data_normalization_type)
+        y_actual = normalize_data(self._test_data, self._data_normalization_type)
+        
+        # Check which zero-shot predictors are actually available
+        has_ec = hasattr(self, '_EC_predictions')
+        has_energy = hasattr(self, '_Energy_predictions')
+        has_esm = hasattr(self, '_ESM_predictions')
+
+        # Load zero-shot data ONCE
+        zero_shot_data = {}
+        if has_ec:
+            zero_shot_data['ec'] = {
+                'train': np.array([[self._EC_predictions.loc[aa] for aa in self._training_data['AminoAcid']]]),
+                'test': np.array([[self._EC_predictions.loc[aa] for aa in self._test_data['AminoAcid']]]),
+                'all': np.array([self._EC_predictions])
+            }
+        if has_energy:
+            zero_shot_data['energy'] = {
+                'train': np.array([[self._Energy_predictions.loc[aa] for aa in self._training_data['AminoAcid']]]),
+                'test': np.array([[self._Energy_predictions.loc[aa] for aa in self._test_data['AminoAcid']]]),
+                'all': np.array([self._Energy_predictions])
+            }
+        if has_esm:
+            zero_shot_data['esm'] = {
+                'train': np.array([[self._ESM_predictions.loc[aa] for aa in self._training_data['AminoAcid']]]),
+                'test': np.array([[self._ESM_predictions.loc[aa] for aa in self._test_data['AminoAcid']]]),
+                'all': np.array([self._ESM_predictions])
+            }
+
+        # --- 2. Define the "helper function" to run in parallel ---
+        
+        def _fit_one_model(model_encoding_tuple):
+            model, encoding = model_encoding_tuple
+            
+            # Skip models if files are missing
+            if model == 'AugmentedEC' and not has_ec: return None
+            if model == 'AugmentedEnergy' and not has_energy: return None
+            if model == 'AugmentedESM' and not has_esm: return None
+            if model == 'AugmentedEC_Energy' and not (has_ec and has_energy): return None
+            if model == 'AugmentedEC_ESM' and not (has_ec and has_esm): return None
+            if model == 'AugmentedESM_Energy' and not (has_esm and has_energy): return None
+            if model == 'AugmentedEC_Energy_ESM' and not (has_ec and has_energy and has_esm): return None
+
+            # Get pre-loaded encoding data
+            x_train = encodings[encoding]['x_train']
+            x_test = encodings[encoding]['x_test']
+            x_all = encodings[encoding]['x_all']
+            
+            # Build the augmented model inputs
+            if model == 'Simple':
+                x_train_model = x_train
+                x_test_model = x_test
+                x_all_model = x_all
+            if model == 'AugmentedEC':
+                x_train_model = np.concatenate((zero_shot_data['ec']['train'].T,x_train), axis=1)
+                x_test_model = np.concatenate((zero_shot_data['ec']['test'].T,x_test), axis=1)
+                x_all_model = np.concatenate((zero_shot_data['ec']['all'].T,x_all), axis=1)
+            if model == 'AugmentedEnergy':
+                x_train_model = np.concatenate((zero_shot_data['energy']['train'].T,x_train), axis=1)
+                x_test_model = np.concatenate((zero_shot_data['energy']['test'].T,x_test), axis=1)
+                x_all_model = np.concatenate((zero_shot_data['energy']['all'].T,x_all), axis=1)
+            if model == 'AugmentedESM':
+                x_train_model = np.concatenate((zero_shot_data['esm']['train'].T,x_train), axis=1)
+                x_test_model = np.concatenate((zero_shot_data['esm']['test'].T,x_test), axis=1)
+                x_all_model = np.concatenate((zero_shot_data['esm']['all'].T,x_all), axis=1)
+            if model == 'AugmentedEC_Energy':
+                x_train_model = np.concatenate((zero_shot_data['ec']['train'].T,zero_shot_data['energy']['train'].T,x_train), axis=1)
+                x_test_model = np.concatenate((zero_shot_data['ec']['test'].T,zero_shot_data['energy']['test'].T,x_test), axis=1)
+                x_all_model = np.concatenate((zero_shot_data['ec']['all'].T,zero_shot_data['energy']['all'].T,x_all), axis=1)
+            if model == 'AugmentedEC_ESM':
+                x_train_model = np.concatenate((zero_shot_data['ec']['train'].T,zero_shot_data['esm']['train'].T,x_train), axis=1)
+                x_test_model = np.concatenate((zero_shot_data['ec']['test'].T,zero_shot_data['esm']['test'].T,x_test), axis=1)
+                x_all_model = np.concatenate((zero_shot_data['ec']['all'].T,zero_shot_data['esm']['all'].T,x_all), axis=1)
+            if model == 'AugmentedESM_Energy':
+                x_train_model = np.concatenate((zero_shot_data['esm']['train'].T,zero_shot_data['energy']['train'].T,x_train), axis=1)
+                x_test_model = np.concatenate((zero_shot_data['esm']['test'].T,zero_shot_data['energy']['test'].T,x_test), axis=1)
+                x_all_model = np.concatenate((zero_shot_data['esm']['all'].T, zero_shot_data['energy']['all'].T,x_all), axis=1)
+            if model == 'AugmentedEC_Energy_ESM':
+                x_train_model = np.concatenate((zero_shot_data['ec']['train'].T,zero_shot_data['energy']['train'].T,zero_shot_data['esm']['train'].T,x_train), axis=1)
+                x_test_model = np.concatenate((zero_shot_data['ec']['test'].T,zero_shot_data['energy']['test'].T,zero_shot_data['esm']['test'].T,x_test), axis=1)
+                x_all_model = np.concatenate((zero_shot_data['ec']['all'].T,zero_shot_data['energy']['all'].T,zero_shot_data['esm']['all'].T,x_all), axis=1)
+            
+            # Fit the RidgeCV model
+            alphas_to_test = np.linspace(0.01, 100, 100)
+            clf_cv = linear_model.RidgeCV(alphas=alphas_to_test, cv=None)
+            hyper_tune = clf_cv.fit(x_train_model, y_train)
+            tuned_alpha = hyper_tune.alpha_
+            
+            # Make predictions
+            y_predict_test = hyper_tune.predict(x_test_model)
+            y_predict_all = hyper_tune.predict(x_all_model)
+            name = f"{model}: {encoding}"
+            
+            # Calculate metrics
+            spearman_r = stats.spearmanr(y_actual, y_predict_test)[0]
+            
+            compare = pd.DataFrame({'actual':y_actual,'predicted':y_predict_test})
+            predicted_sort = compare.sort_values('predicted', ascending=False)
+            actual_sort = compare.sort_values('actual', ascending=False)
+            DCG = 0
+            for i,n in enumerate(predicted_sort['actual']):
+                add = n/(np.log2(i+2))
+                DCG += add
+            ideal_DCG = 0
+            for i,n in enumerate(actual_sort['actual']):
+                add = n/(np.log2(i+2))
+                ideal_DCG += add
+            ndcg_calc = DCG/ideal_DCG
+            
+            return (name, spearman_r, ndcg_calc, tuned_alpha, y_predict_all, y_predict_test)
+
+        # --- 3. Create the list of jobs to run ---
+        jobs = list(product(model_list, encoding_list)) # e.g., [('Simple', 'One Hot'), ('Simple', 'Georgiev'), ...]
+
+        # --- 4. Run all jobs in parallel ---
+        # n_jobs=-1 uses all available CPU cores
+        results = Parallel(n_jobs=-1)(delayed(_fit_one_model)(job) for job in jobs)
+        
+        # --- 5. Collect and organize the results ---
+        architecture = []
+        spearman = []
+        ndcg = []
+        alpha = []
+        
+        combo = self._model_scope_mutations
+        predictions = {'Mutation':combo}
+        predictions_test = {'Mutation': self._test_data['AminoAcid'], 'Actual': self._test_data['Activity']}
+
+        for result in results:
+            if result is None: # Skip jobs that were skipped
+                continue
+                
+            # Unpack the tuple
+            (name, spearman_r, ndcg_calc, tuned_alpha, y_predict_all, y_predict_test) = result
+            
+            architecture.append(name)
+            spearman.append(spearman_r)
+            ndcg.append(ndcg_calc)
+            alpha.append(tuned_alpha)
+            predictions[name] = y_predict_all
+            predictions_test[name] = y_predict_test
+            
+            if ShowPlots == True:
+                plt.scatter(y_actual, y_predict_test)
+                plt.title(name)
+                plt.show()
+
+        # --- 6. Set class attributes ---
+        model_metrics = pd.DataFrame(data={'architecture':architecture, 'spearman_r':spearman, 'NDCG':ndcg, 'Tuned Alpha':alpha})
+        predictions_df = pd.DataFrame(data=predictions)
+        predictions_test_df = pd.DataFrame(data=predictions_test)
+        
+        self._all_predictions = predictions_df
+        self._test_predictions = predictions_test_df
+        self._model_metrics = model_metrics
+        
+        print(f"Parallel compare_and_predict finished in {time.time() - t0:.2f} seconds.")
+        return
     
     def train_and_predict(self, model, encoding):
         """
@@ -339,6 +534,7 @@ class AugmentedMLDEmodel():
             x_train_model = np.concatenate((ec_predictions_train.T,energy_predictions_train.T,esm_predictions_train.T,x_train), axis=1)
             x_all_model = np.concatenate((ec_predictions_all.T,energy_predictions_all.T,esm_predictions_all.T,x_all), axis=1)
         
+        '''
         #hyperparameter tuning of ridge regression model using k-fold cv of all training data
         cv = RepeatedKFold(n_splits=5, n_repeats=20, random_state=self._random_seed)
         clf = linear_model.Ridge()
@@ -348,6 +544,18 @@ class AugmentedMLDEmodel():
         tuned_alpha = hyper_tune.best_estimator_
         alpha.append(tuned_alpha)
         MSE = hyper_tune.best_score_
+        '''
+
+        # Hyperparameter tuning using the much faster RidgeCV
+        alphas_to_test = np.linspace(0.01, 100, 100)
+
+        # cv=None uses efficient Leave-One-Out Cross-Validation
+        clf_cv = linear_model.RidgeCV(alphas=alphas_to_test, cv=None) 
+        hyper_tune = clf_cv.fit(x_train_model, y_train)
+
+        # Get the best alpha and score
+        tuned_alpha = hyper_tune.alpha_
+        alpha.append(tuned_alpha)
         
         #make predictions of entire combinatorial data set
         y_predict_all = hyper_tune.predict(x_all_model)
