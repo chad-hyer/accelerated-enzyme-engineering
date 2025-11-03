@@ -23,7 +23,6 @@ import matplotlib.pyplot as plt
 import re, os
 
 import time
-from itertools import p
 from joblib import Parallel, delayed
 
 # We use RidgeCV instead of GridSearchCV for massive speedup
@@ -314,13 +313,13 @@ class AugmentedMLDEmodel():
         
         if "EC" in model:  
             ec_predictions_train = np.array([[self._EC_predictions.loc[aa] for aa in self._training_data['AminoAcid']]])
-            ec_predictions_all = np.array([self._EC_predictions[mut] for mut in self._model_scope_mutations]) # Aligned
+            ec_predictions_all = np.array([[self._EC_predictions[mut] for mut in self._model_scope_mutations]]) # Aligned
         if "Energy" in model:
             energy_predictions_train = np.array([[self._Energy_predictions.loc[aa] for aa in self._training_data['AminoAcid']]])
-            energy_predictions_all = np.array([self._Energy_predictions[mut] for mut in self._model_scope_mutations]) # Aligned
+            energy_predictions_all = np.array([[self._Energy_predictions[mut] for mut in self._model_scope_mutations]]) # Aligned
         if "ESM" in model:
             esm_predictions_train = np.array([[self._ESM_predictions.loc[aa] for aa in self._training_data['AminoAcid']]])
-            esm_predictions_all = np.array([self._ESM_predictions[mut] for mut in self._model_scope_mutations]) # Aligned
+            esm_predictions_all = np.array([[self._ESM_predictions[mut] for mut in self._model_scope_mutations]]) # Aligned
         
         # Build the augmented model inputs
         x_train_model, x_all_model = x_train, x_all
