@@ -2,7 +2,7 @@
 
 # --- Job Details ---
 #SBATCH --job-name=tiling_conductor  # Name for this master job
-#SBATCH --time=2-00:00:00            # Max walltime: 7 days (adjust as needed) # --partition=long             # Run on a partition with a long walltime
+#SBATCH --time=01:00:00            # Max walltime: 7 days (adjust as needed) # --partition=long             # Run on a partition with a long walltime
 
 # --- Resource Allocation ---
 # This master script is serial. It just launches and waits for other jobs.

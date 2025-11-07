@@ -99,36 +99,32 @@ def main():
         train_original = pd.read_excel(TRAIN_FILE_PATH)
         test_original = pd.read_excel(TEST_FILE_PATH)
     except FileNotFoundError as e:
-        # ... (error handling as before) ...
+        print(f"Fatal Error: Could not find original input file. {e}")
         sys.exit(1)
         
-    # --- MODIFICATION: Pre-process EVC data ONCE ---
-    # This is still a good optimization, but we must pass it to the workers
-    preprocessed_ec_data, model_scope = preprocess_evc_data(EC_FILE_PATH, train_original, test_original)
-    
-    iteration_count = 0
+    iteration_count = 0 # Initialize
 
     # --- 2. Main Tiling Loop ---
-    # This loop is now controlled by the state of the data
     while True: 
         
         # --- A. Checkpoint Logic (Copied from original script) ---
-        # This logic now runs at the START of each loop
+        # This logic runs at the START of each loop to load the
+        # *current* state of the experiment.
         if os.path.exists(tiling_path_filename):
             try:
                 tiling_path_df = pd.read_csv(tiling_path_filename, sep='\t')
                 if tiling_path_df.empty:
                     train_main = train_original.copy()
                     test_main = test_original.copy()
-                    iteration_count = 0
+                    iteration_count = 0 # No iterations have run
                 else:
-                    iteration_count = tiling_path_df['Iteration'].max()
+                    iteration_count = tiling_path_df['Iteration'].max() # Get last completed iteration
                     chosen_mutations = tiling_path_df['Best_Mutation'].tolist()
                     rows_to_move = test_original[test_original['AminoAcid'].isin(chosen_mutations)]
                     train_main = pd.concat([train_original, rows_to_move], ignore_index=True)
                     test_main = test_original[~test_original['AminoAcid'].isin(chosen_mutations)].copy()
             except Exception as e:
-                # ... (error handling as before) ...
+                print(f"Error loading {tiling_path_filename}: {e}. Starting from scratch.")
                 train_main = train_original.copy()
                 test_main = test_original.copy()
                 iteration_count = 0
@@ -150,10 +146,19 @@ def main():
             print("No more mutations to test. Tiling complete.")
             break
             
+        # --- C. (THE FIX) Increment Iteration and Create Directories ---
+        # We are now starting the *next* iteration.
         iteration_count += 1
         iteration_start_time = time.perf_counter()
+        
+        # Define and create the directory for *this* iteration's results
         iteration_dir = os.path.join(OUT_DIR, f'it_{iteration_count}')
         os.makedirs(iteration_dir, exist_ok=True)
+        
+        # Define and create the log directory for *this* iteration's workers
+        log_dir = os.path.join("/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src", "slurm_logs", f"it_{iteration_count}")
+        os.makedirs(log_dir, exist_ok=True)
+        # --- END OF FIX ---
 
         print(f"\n--- Iteration {iteration_count} / Remaining Test Set: {len(test_main)} ---")
         
@@ -161,49 +166,72 @@ def main():
         n_tasks = len(mutations_to_process)
         print(f"Preparing to test {n_tasks} mutations via Slurm job array...")
 
-        # --- C. Prepare data for parallel workers ---
-        # We save the data workers need to *temporary* files
-        temp_train_path = os.path.join(iteration_dir, 'temp_train.pkl')
-        temp_test_path = os.path.join(iteration_dir, 'temp_test.pkl')
-        temp_ec_path = os.path.join(iteration_dir, 'temp_ec.pkl')
-        temp_model_scope_path = os.path.join(iteration_dir, 'temp_model_scope.pkl')
+        # --- D. Prepare data for parallel workers ---
+        # Now we can safely write the mutation list
         mutation_list_path = os.path.join(iteration_dir, 'mutation_list.txt')
-
-        with open(temp_train_path, 'wb') as f: pickle.dump(train_main, f)
-        with open(temp_test_path, 'wb') as f: pickle.dump(test_main, f)
-        with open(temp_ec_path, 'wb') as f: pickle.dump(preprocessed_ec_data, f)
-        with open(temp_model_scope_path, 'wb') as f: pickle.dump(model_scope, f)
         with open(mutation_list_path, 'w') as f:
             for mut in mutations_to_process: f.write(f"{mut}\n")
             
-        # --- D. Run Tiled Error Scenarios (THE NEW PARALLEL PART) ---
+        # --- E. Run Tiled Error Scenarios ---
         parallel_start_time = time.perf_counter()
         
-        sbatch_command = [
-            'sbatch',
-            '--wait', # Pause this script until all jobs finish
-            f'--array=1-{n_tasks}',
-            'sbatch_array_worker.sbatch', # The sbatch script
-            str(iteration_count),         # Arg 1: Iteration number
-            iteration_dir,                # Arg 2: Iteration directory
-            mutation_list_path,           # Arg 3: Path to mutation list
-            temp_train_path,              # Arg 4: Path to train data
-            temp_test_path,               # Arg 5: Path to test data
-            temp_ec_path,                 # Arg 6: Path to EVC data
-            temp_model_scope_path         # Arg 7: Path to model scope
-        ]
+        # --- NEW CHUNKING LOGIC ---
         
-        print(f"Submitting job array: {' '.join(sbatch_command)}")
-        try:
-            subprocess.run(sbatch_command, check=True)
-            print(f"Job array finished in {time.perf_counter() - parallel_start_time:.2f}s")
-        except subprocess.CalledProcessError as e:
-            print(f"FATAL ERROR: Slurm job array failed: {e}. Check Slurm logs.")
-            sys.exit(1)
+        # Set a safe chunk size, based on your observation
+        MAX_ARRAY_CHUNK_SIZE = 999 
+        
+        # Set a max number of *concurrent* jobs (e.g., 500).
+        # This is polite to the scheduler and adds '%500' to the array spec.
+        MAX_CONCURRENT_JOBS = 500
 
-        # --- E. Process Results and Find Best (Serial) ---
-        # (This section is MODIFIED to read from files)
+        # Calculate number of chunks needed
+        num_chunks = (n_tasks + MAX_ARRAY_CHUNK_SIZE - 1) // MAX_ARRAY_CHUNK_SIZE
+
+        if num_chunks > 1:
+            print(f"Total tasks ({n_tasks}) exceeds chunk size ({MAX_ARRAY_CHUNK_SIZE}).")
+            print(f"Submitting in {num_chunks} chunks.")
+        else:
+            print(f"Submitting {n_tasks} tasks in a single chunk.")
+
+        # Loop over each chunk and submit it
+        for i in range(num_chunks):
+            # Calculate the start and end index for this chunk (1-based)
+            task_start_index = (i * MAX_ARRAY_CHUNK_SIZE) + 1
+            task_end_index = min((i + 1) * MAX_ARRAY_CHUNK_SIZE, n_tasks)
+            
+            # Create the array spec, e.g., "1-999%500" or "1000-1998%500"
+            array_spec = f"{task_start_index}-{task_end_index}%{MAX_CONCURRENT_JOBS}"
+
+            if num_chunks > 1:
+                print(f"--- Submitting Chunk {i+1}/{num_chunks}: --array={array_spec} ---")
+
+            sbatch_command = [
+                'sbatch',
+                '--wait', # CRITICAL: Wait for THIS CHUNK to finish
+                f'--array={array_spec}', # Use the chunked and throttled spec
+                f'--output={log_dir}/worker_%A_%a.out',
+                f'--error={log_dir}/worker_%A_%a.err',
+                'sbatch_array_worker.sbatch', 
+                iteration_dir,                # Arg 1: IT_DIR
+                mutation_list_path,           # Arg 2: MUTATION_LIST_PATH
+            ]
+            
+            print(f"Submitting: {' '.join(sbatch_command)}")
+            try:
+                # Run the sbatch command for the current chunk
+                subprocess.run(sbatch_command, check=True)
+            except subprocess.CalledProcessError as e:
+                print(f"FATAL ERROR: Slurm job array chunk {i+1} failed: {e}.")
+                print(f"Command: {repr(e.cmd)}") 
+                print(f"Stderr (if any): {e.stderr}")
+                print("Check Slurm logs. Aborting experiment.")
+                sys.exit(1)
+
+        # --- END OF NEW CHUNKING LOGIC ---
+
+        print(f"All {num_chunks} chunk(s) finished in {time.perf_counter() - parallel_start_time:.2f}s")
         
+        # --- F. Process Results and Find Best (Serial) ---
         print("Collecting results from worker jobs...")
         it_dict = {}
         error_files = glob.glob(os.path.join(iteration_dir, 'error_*.csv'))
@@ -219,14 +247,23 @@ def main():
                 print(f"Warning: could not read {f}. {e}")
         
         if not error_dfs:
-            print("FATAL ERROR: No result files found. Exiting.")
+            print(f"FATAL ERROR: No result files found for iteration {iteration_count}. Exiting.")
             sys.exit(1)
             
         full_error_df = pd.concat(error_dfs)
         it_dict = pd.Series(full_error_df.Median_Error.values, index=full_error_df.Mutation).to_dict()
 
+        # Handle failed jobs
+        if not it_dict:
+             print(f"FATAL ERROR: All jobs failed for iteration {iteration_count}. Exiting.")
+             sys.exit(1)
+
         best_mutation_name = min(it_dict, key=it_dict.get)
         best_median_error = it_dict[best_mutation_name]
+        
+        if best_median_error == np.inf:
+            print(f"Error: All parallel jobs failed (best error is inf). Stopping experiment.")
+            sys.exit(1)
 
         print(f"Best mutation to add: {best_mutation_name} (New Median Error: {best_median_error:.4f})")
         
@@ -237,22 +274,13 @@ def main():
         except Exception as e:
             print(f"Warning: Could not write to log file {tiling_path_filename}. {e}")
         
-        # --- F. Commit Change for Next Loop (Serial) ---
-        # (This section is UNCHANGED, but now runs AFTER the wait)
-        # We don't need to do this, because the logic at the
-        # start of the loop will handle it.
-        print("Data for next loop will be built on next iteration.")
-        
         # --- G. Save Artifacts (Serial) ---
-        # (This section is MODIFIED to load the best prediction)
-        
-        # Save the sorted full error list
+        # (This logic is from your original script)
         it_dict_df = pd.DataFrame(it_dict.items(), columns=['Mutation', 'Median_Error'])
         it_dict_df.sort_values(by='Median_Error', ascending=True, inplace=True)
         it_dict_path = os.path.join(iteration_dir, f'median_error_it_{iteration_count}.csv')
         it_dict_df.to_csv(it_dict_path, index=False)
         
-        # Load the BEST prediction_df from its pickle file
         best_prediction_path = os.path.join(iteration_dir, f'predictions_{best_mutation_name}.pkl')
         best_prediction_df = None
         try:
@@ -261,7 +289,6 @@ def main():
         except Exception as e:
             print(f"Warning: Could not load best prediction file {best_prediction_path}. {e}")
 
-        # (The rest of your "Save Artifacts" logic is UNCHANGED)
         if best_prediction_df is not None:
             best_prediction_df.rename(columns={'Mutation': 'AminoAcid'}, inplace=True)
 
@@ -276,14 +303,12 @@ def main():
             
             matrix_input_df['Error'] = np.abs(matrix_input_df['Activity'] - matrix_input_df['Prediction'])
             
-            # (Need to import create_error_matrix from Tiling_helper_functions.py)
             error_matrix = create_error_matrix(matrix_input_df)
             error_matrix.to_csv(os.path.join(iteration_dir, f'best_error_it_{iteration_count}.csv'))
             
             prediction_csv_path = os.path.join(iteration_dir, f'prediction_it_{iteration_count}.csv')
             matrix_input_df.to_csv(prediction_csv_path, index=False)
             
-            # (Need to import defattr from chimerax_simulate.py)
             defattr_path = os.path.join(OUT_DIR, 'ChimeraX_defattr', f'it_{iteration_count}.defattr')
             defattr(prediction_csv_path, defattr_path, error_column_name='Error')
 
@@ -293,7 +318,6 @@ def main():
         print("Cleaning up intermediate files...")
         files_to_remove = glob.glob(os.path.join(iteration_dir, 'error_*.csv'))
         files_to_remove.extend(glob.glob(os.path.join(iteration_dir, 'predictions_*.pkl')))
-        files_to_remove.extend(glob.glob(os.path.join(iteration_dir, 'temp_*.pkl')))
         files_to_remove.append(mutation_list_path)
         
         for f in files_to_remove:
