@@ -48,7 +48,7 @@ export NUMEXPR_NUM_THREADS=1
 
 # --- Run the Python Worker Script ---
 # Make sure process_one_mutation.py is in your $BASE_DIR or Python path
-python3 /scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/process_one_mutation.py \
+python3 /scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/Array_edits/process_one_mutation.py \
     $IT_DIR \
     $MUTATION_TO_TEST \
     $TRAIN_PATH \
