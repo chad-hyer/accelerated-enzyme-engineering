@@ -32,10 +32,10 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # --- Constants ---
 WT_SEQUENCE = "MGEKIEHPQWSYSGKTGPKYWGYLSGKTGPKYWGYLSPEYIMCAIGKNQSPIDLNEKYMVKACTRPLQINYVADAVKVLNNGHTIKVITLGKSYVVIDGRKFYLRQFHFHAPSEHTVNGEYYPFEAHFVHTDDEGNIAVIGVLFKLGKTNKELQKIWDYMPTKVGQENLLLTKVNPYLLLPKKKDYYRYNGSLTTPPCSEGVRWIIFKEPVEISAEQLNLFKEVMGFPNNRPIQPINARKILK"
-TRAIN_FILE_PATH = '/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/CA_train.xlsx'
-TEST_FILE_PATH = '/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/CA_test.xlsx'
-EC_FILE_PATH = '/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/CA_single_mutant_matrix.csv'
-OUT_DIR = '/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/results'
+TRAIN_FILE_PATH = 'D:/Documents/GitHub/accelerated-enzyme-engineering/src/CA_train.xlsx'
+TEST_FILE_PATH = 'D:/Documents/GitHub/accelerated-enzyme-engineering/src/CA_test.xlsx'
+EC_FILE_PATH = 'D:/Documents/GitHub/accelerated-enzyme-engineering/src/CA_single_mutant_matrix.csv'
+OUT_DIR = 'D:/Documents/GitHub/accelerated-enzyme-engineering/src/results'
 
 
 # --- MODIFICATION 3: Add the EVC pre-processing function ---
