@@ -1,5 +1,6 @@
 import pandas as pd
-from AugmentedMLDE_Class import AugmentedMLDEmodel
+from AugmentedMLDE_Class_optimized import AugmentedMLDEmodel
+from Random_Tiling_parallelized_HPC_optimized import preprocess_evc_data
 # Make sure your modified 'AugmentedMLDE_HelperFuncs.py' is in the same folder
 
 # --- 1. Define Your Parameters ---
@@ -9,8 +10,11 @@ from AugmentedMLDE_Class import AugmentedMLDEmodel
 WT_SEQUENCE = "MGEKIEHPQWSYSGKTGPKYWGYLSPEYIMCAIGKNQSPIDLNEKYMVKACTRPLQINYVADAVKVLNNGHTIKVITLGKSYVVIDGRKFYLRQFHFHAPSEHTVNGEYYPFEAHFVHTDDEGNIAVIGVLFKLGKTNKELQKIWDYMPTKVGQENLLLTKVNPYLLLPKKKDYYRYNGSLTTPPCSEGVRWIIFKEPVEISAEQLNLFKEVMGFPNNRPIQPINARKILK" 
 
 # --- 2. Define File Paths ---
-TRAIN_FILE = 'CA_train.xlsx'
-TEST_FILE = 'CA_test.xlsx' # Use None if you don't have a separate test set
+TRAIN_FILE = 'perfect_it_1468_train.xlsx'
+TEST_FILE = 'perfect_it_1468_test.xlsx' # Use None if you don't have a separate test set
+
+ORIGINAL_TRAIN_PATH = 'CA_train.xlsx'
+ORIGINAL_TEST_PATH = 'CA_test.xlsx'
 
 # Your EVCouplings file is now the "anchor" file for the model's scope
 EC_FILE = 'CA_single_mutant_matrix.csv' 
@@ -19,6 +23,13 @@ EC_FILE = 'CA_single_mutant_matrix.csv'
 ESM_FILE = 'ESM_file.csv'
 MAESTRO_FILE = 'Maestro_file.csv'
 
+train_df = pd.read_excel(TRAIN_FILE)
+test_df = pd.read_excel(TEST_FILE)
+original_train_df = pd.read_excel(ORIGINAL_TRAIN_PATH)
+original_test_df = pd.read_excel(ORIGINAL_TEST_PATH)
+
+ec_predictions, model_scope_mutations = preprocess_evc_data(EC_FILE, original_train_df, original_test_df)
+
 # --- 3. Instantiate and Run the Model ---
 print("Initializing Augmented MLDE Model...")
 print("Defining model scope from EVC file + Training file...")
@@ -26,11 +37,12 @@ print("Defining model scope from EVC file + Training file...")
 # Instantiate the class with the new signature
 # Notice 'sequence_length' is no longer passed
 model = AugmentedMLDEmodel(
-    training_data_file=TRAIN_FILE,
-    test_data_file=TEST_FILE,
+    training_data=train_df, 
+    test_data=test_df,          
     wt_sequence=WT_SEQUENCE,
-    EC_file=EC_FILE,
-    Maestro_file=None,
+    model_scope_mutations=model_scope_mutations, # Pass pre-processed
+    ec_predictions=ec_predictions,               # Pass pre-processed
+    Maestro_file=None, 
     ESM_file=None
 )
 ''' SKIP
