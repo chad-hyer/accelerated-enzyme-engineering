@@ -83,7 +83,7 @@ def preprocess_evc_data(ec_file_path, train_df, test_df):
 # --- Parallel Helper Function ---
 # --- MODIFICATION 4: Renamed to `process_tiled_error` and changed signature ---
 def process_tiled_error(mutation_name, train_main_df, test_main_df, 
-                        wt_seq, model_scope_mutations, ec_predictions):
+                        wt_seq, model_scope_mutations, ec_predictions, old_error_df):
     """
     Runs one "tiled error" scenario in a parallel process.
     """
@@ -124,17 +124,20 @@ def process_tiled_error(mutation_name, train_main_df, test_main_df,
             
         # 7. Calculate error ONLY on the temp test set
         test_preds = pd.merge(temp_test_df, all_preds_df, left_on='AminoAcid', right_on='Mutation')
-        test_preds['Residue Number'] = test_preds['AminoAcid'].str[1:-1].astype(int)
-        residue_number = int(mutation_name[1:-1])
-        test_preds['Error'] = np.abs(test_preds['Activity'] - test_preds['Prediction'])
-        others = test_preds[test_preds['Residue Number'] != residue_number]
-        median_error = np.median(others['Error'])
-        test_preds.drop(columns=['Residue Number'],inplace=True)
+        old_error_df.rename(columns={'Error':'Previous_Error'}, inplace=True)
+        test_preds = test_preds.merge(old_error_df[['AminoAcid', 'Previous_Error']], on='AminoAcid', how='left')
+        test_preds['dError'] = test_preds['Error'] - test_preds['Previous_Error']
+        total_delta_error = test_preds['dError']
+        #residue_number = int(mutation_name[1:-1])
+        #test_preds['Error'] = np.abs(test_preds['Activity'] - test_preds['Prediction'])
+        #others = test_preds[test_preds['Residue Number'] != residue_number]
+        median_error = np.median(test_preds['Error'])
+        #test_preds.drop(columns=['Residue Number'],inplace=True)
         
         # 8. Get params
         params = model._best_alpha # This is set by the optimized class
         
-        return (mutation_name, median_error, all_preds_df, params)
+        return (mutation_name, median_error, all_preds_df, params, total_delta_error)
     
     except Exception as e:
         tb_str = traceback.format_exc()
@@ -151,7 +154,7 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     os.makedirs(os.path.join(OUT_DIR, 'ChimeraX_defattr'), exist_ok=True)
 
-    tiling_path_filename = os.path.join(OUT_DIR, 'perfect_tiling_path.tsv')
+    tiling_path_filename = os.path.join(OUT_DIR, 'altruistic_tiling_path.tsv')
     
     # Load original data first
     try:
@@ -181,17 +184,21 @@ def main():
                 rows_to_move = test_original[test_original['AminoAcid'].isin(chosen_mutations)]
                 train_main = pd.concat([train_original, rows_to_move], ignore_index=True)
                 test_main = test_original[~test_original['AminoAcid'].isin(chosen_mutations)].copy()
-            
+            old_error_df = pd.read_csv(f'{OUT_DIR}/it_{iteration_count}/prediction_it_{iteration_count}.csv')
             print(f"Resuming from Iteration {iteration_count + 1}")
         except Exception as e:
             print(f"Error loading {tiling_path_filename}: {e}. Starting from scratch.")
             train_main = train_original.copy()
             test_main = test_original.copy()
+            old_error_df = train_main._append(test_main, ignore_index=True)
+            old_error_df['Error'] = 0
             iteration_count = 0
     else:
         print("No tiling path file found. Starting from scratch.")
         train_main = train_original.copy()
         test_main = test_original.copy()
+        old_error_df = old_error_df = train_main._append(test_main, ignore_index=True)
+        old_error_df['Error'] = 0
         iteration_count = 0
     
     # --- SLURM-aware core count ---
@@ -214,7 +221,7 @@ def main():
     if iteration_count == 0:
         try:
             with open(tiling_path_filename, 'w') as f:
-                f.write("Iteration\tBest_Mutation\tMedian_Error\n")
+                f.write("Iteration\tBest_Mutation\tMedian_Error\nDelta_Error\n")
         except Exception as e:
             print(f"CRITICAL ERROR: Could not write to log file {tiling_path_filename}. {e}")
             sys.exit(1)
@@ -249,7 +256,8 @@ def main():
             test_main,      
             WT_SEQUENCE,    
             model_scope,           # Pass pre-processed data
-            preprocessed_ec_data   # Pass pre-processed data
+            preprocessed_ec_data,   # Pass pre-processed data
+            old_error_df
         ) for mut_name in mutations_to_process)
         
         print(f"Parallel processing finished in {time.perf_counter() - parallel_start_time:.2f}s")
@@ -258,15 +266,17 @@ def main():
         it_dict = {}
         it_params = {}
         it_predictions = {}
+        it_delta = {}
         
         failed_jobs = 0
         for res in results:
             if res is None: 
                 failed_jobs += 1
                 continue
-            mut_name, error, pred_df, params = res
+            mut_name, error, pred_df, params, total_delta_error = res
             it_dict[mut_name] = error
             it_params[mut_name] = params
+            it_delta[mut_name] = total_delta_error
             it_predictions[mut_name] = pred_df
             if error == np.inf:
                 failed_jobs += 1
@@ -274,8 +284,9 @@ def main():
         if failed_jobs > 0:
              print(f"Warning: {failed_jobs} parallel jobs failed (see errors above).")
 
-        best_mutation_name = min(it_dict, key=it_dict.get)
+        best_mutation_name = min(it_delta, key=it_delta.get)
         best_median_error = it_dict[best_mutation_name]
+        best_delta_error = it_delta[best_mutation_name]
         best_prediction_df = it_predictions[best_mutation_name]
         
         if best_median_error == np.inf:
@@ -287,7 +298,7 @@ def main():
         # Append this iteration's result to the TSV file
         try:
             with open(tiling_path_filename, 'a') as f: # 'a' = append mode
-                f.write(f"{iteration_count}\t{best_mutation_name}\t{best_median_error}\n")
+                f.write(f"{iteration_count}\t{best_mutation_name}\t{best_median_error}\t{best_delta_error}\n")
         except Exception as e:
             print(f"Warning: Could not write to log file {tiling_path_filename}. {e}")
         
@@ -301,9 +312,11 @@ def main():
         
         # --- MODIFICATION: Save the sorted full error list ---
         it_dict_df = pd.DataFrame(it_dict.items(), columns=['Mutation', 'Median_Error'])
-        it_dict_df.sort_values(by='Median_Error', ascending=True, inplace=True)
+        it_delta_df = pd.DataFrame(it_delta.items(), columns=['Mutation', 'Delta_Error'])
+        it_delta_df = it_delta_df.merge(it_dict_df, on='Mutation', how='left')
+        it_delta_df.sort_values(by='Delta_Error', ascending=True, inplace=True)
         it_dict_path = os.path.join(iteration_dir, f'median_error_it_{iteration_count}.csv')
-        it_dict_df.to_csv(it_dict_path, index=False)
+        it_delta_df.to_csv(it_dict_path, index=False)
         
         # --- Save Error Matrix and Defattr (only if predictions exist) ---
         if best_prediction_df is not None:
@@ -327,6 +340,7 @@ def main():
             # --- MODIFICATION: Save prediction data (formerly defattr_input) ---
             prediction_csv_path = os.path.join(iteration_dir, f'prediction_it_{iteration_count}.csv')
             matrix_input_df.to_csv(prediction_csv_path, index=False)
+            old_error_df = matrix_input_df.copy()
             
             # Save ChimeraX attribute file
             defattr_path = os.path.join(OUT_DIR, 'ChimeraX_defattr', f'it_{iteration_count}.defattr')
