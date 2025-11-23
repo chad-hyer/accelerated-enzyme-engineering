@@ -128,7 +128,7 @@ def process_tiled_error(mutation_name, train_main_df, test_main_df,
         test_preds['Error'] = np.abs(test_preds['Activity'] - test_preds['Prediction'])
         test_preds = test_preds.merge(old_error_df[['AminoAcid', 'Previous_Error']], on='AminoAcid', how='left')
         test_preds['dError'] = test_preds['Error'] - test_preds['Previous_Error']
-        total_delta_error = test_preds['dError']
+        total_delta_error = test_preds['dError'].sum()
         #residue_number = int(mutation_name[1:-1])
         #others = test_preds[test_preds['Residue Number'] != residue_number]
         median_error = np.median(test_preds['Error'])
@@ -221,7 +221,7 @@ def main():
     if iteration_count == 0:
         try:
             with open(tiling_path_filename, 'w') as f:
-                f.write("Iteration\tBest_Mutation\tMedian_Error\nDelta_Error\n")
+                f.write("Iteration\tBest_Mutation\tMedian_Error\tDelta_Error\n")
         except Exception as e:
             print(f"CRITICAL ERROR: Could not write to log file {tiling_path_filename}. {e}")
             sys.exit(1)
