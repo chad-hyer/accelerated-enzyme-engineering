@@ -125,11 +125,11 @@ def process_tiled_error(mutation_name, train_main_df, test_main_df,
         # 7. Calculate error ONLY on the temp test set
         test_preds = pd.merge(temp_test_df, all_preds_df, left_on='AminoAcid', right_on='Mutation')
         old_error_df.rename(columns={'Error':'Previous_Error'}, inplace=True)
+        test_preds['Error'] = np.abs(test_preds['Activity'] - test_preds['Prediction'])
         test_preds = test_preds.merge(old_error_df[['AminoAcid', 'Previous_Error']], on='AminoAcid', how='left')
         test_preds['dError'] = test_preds['Error'] - test_preds['Previous_Error']
         total_delta_error = test_preds['dError']
         #residue_number = int(mutation_name[1:-1])
-        #test_preds['Error'] = np.abs(test_preds['Activity'] - test_preds['Prediction'])
         #others = test_preds[test_preds['Residue Number'] != residue_number]
         median_error = np.median(test_preds['Error'])
         #test_preds.drop(columns=['Residue Number'],inplace=True)
