@@ -358,6 +358,7 @@ class AugmentedMLDEmodel():
         
         y_predict_all = hyper_tune.predict(x_all_model)
         predictions_df = pd.DataFrame(data={'Mutation':combo, 'Prediction':y_predict_all})
+        self.input_matrix = x_all_model
         
         self._predictions_df = predictions_df
         
