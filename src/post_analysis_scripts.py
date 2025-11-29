@@ -19,6 +19,24 @@ from Bio.PDB.Polypeptide import is_aa
 from scipy.spatial.distance import pdist, squareform
 import warnings
 
+def linregress(df, xcol, ycol, spearman=True):
+    df = df[[xcol,ycol]].dropna()
+    x = df[xcol]
+    y = df[ycol]
+
+    # Calculate the slope (m) and y-intercept (b) using linear regression
+    # linregress returns slope, intercept, r_value, p_value, stderr
+    slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
+
+    # Calculate R-squared from the r_value
+    r_squared = r_value**2
+    
+    if spearman:
+        spear, p = stats.spearmanr(y,x)
+        return slope, intercept, r_squared, spear, p
+    else:
+        return slope, intercept, r_squared
+
 def analyze_protein_structure(cif_path):
     """
     Parses a .cif file, calculates SASA per residue, and generates 
@@ -254,6 +272,24 @@ def choice_attributes(predictions, ptDF, WT_SEQUENCE, sasa_df, distance_df):
         missing = [col for col in locationDF.columns if col not in list(to_append.keys())]
         to_append.update(dict(zip(missing,np.full(len(missing),np.nan))))
         locationDF = locationDF._append(pd.Series(to_append),ignore_index=True)        
-        
-        
+                
     return activityDF, errorDF, physicalDF, locationDF
+
+activityDF, errorDF, physicalDF, locationDF = choice_attributes(predictions, ptDF, WT_SEQUENCE, sasa_df, distance_df)
+
+def correlation_over_iterations(predictions):
+    corr_cols = ['Iteration','m_test','b_test','rsq_test','Spearman_test','p_test','m_train','b_train','rsq_train','Spearman_train','p_train','Median Error Test','Median Error Train']
+    corrDF = pd.DataFrame(columns=corr_cols)
+    for iteration, prediction in predictions.items():
+        test = prediction[prediction['Class'] == 'test'].dropna()
+        train = prediction[prediction['Class'] == 'train'].dropna()
+        test_m, test_b, test_rsq, test_spear, test_p = linregress(test, 'Activity', 'Prediction')
+        train_m, train_b, train_rsq, train_spear, train_p = linregress(train, 'Activity', 'Prediction')
+        test_med = test['Error'].median()
+        train_med = train['Error'].median()
+        to_append = dict(zip(corr_cols,[iteration, test_m, test_b, test_rsq, test_spear, test_p, train_m, train_b, train_rsq, train_spear, train_p, test_med, train_med]))
+        corrDF = corrDF._append(pd.Series(to_append),ignore_index=True)
+    return corrDF
+
+corrDF = correlation_over_iterations(predictions)
+corrDF = corrDF.sort_values(by='Iteration')
