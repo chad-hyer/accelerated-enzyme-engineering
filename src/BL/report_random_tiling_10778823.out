@@ -1,0 +1,38 @@
+Pre-processing EVC data once...
+EVC data pre-processing complete.
+No tiling path file found. Starting from scratch.
+Running on SLURM. Using 2 allocated cores.
+--- Tiling Experiment Starting ---
+Initial training set size: 44
+Initial test set size: 713
+
+--- Iteration 1 / Remaining Test Set: 713 ---
+Testing 1 candidate mutations in parallel...
+Parallel processing finished in 8.60s
+Best mutation to add: I31T (New Median Error: 0.0415)
+Traceback (most recent call last):
+  File "/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/BL/BL_Random_Tiling_parallelized_HPC_optimized.py", line 345, in <module>
+    main(version, OUT_DIR)
+  File "/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/BL/BL_Random_Tiling_parallelized_HPC_optimized.py", line 319, in main
+    error_matrix = create_error_matrix(matrix_input_df)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/BL/Tiling_helper_functions.py", line 55, in create_error_matrix
+    error_matrix_sparse = df.pivot(
+                          ^^^^^^^^^
+  File "/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/tiling_env/lib/python3.12/site-packages/pandas/core/frame.py", line 9366, in pivot
+    return pivot(self, index=index, columns=columns, values=values)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/tiling_env/lib/python3.12/site-packages/pandas/core/reshape/pivot.py", line 570, in pivot
+    result = indexed.unstack(columns_listlike)  # type: ignore[arg-type]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/tiling_env/lib/python3.12/site-packages/pandas/core/series.py", line 4634, in unstack
+    return unstack(self, level, fill_value, sort)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/tiling_env/lib/python3.12/site-packages/pandas/core/reshape/reshape.py", line 517, in unstack
+    unstacker = _Unstacker(
+                ^^^^^^^^^^^
+  File "/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/tiling_env/lib/python3.12/site-packages/pandas/core/reshape/reshape.py", line 154, in __init__
+    self._make_selectors()
+  File "/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/tiling_env/lib/python3.12/site-packages/pandas/core/reshape/reshape.py", line 210, in _make_selectors
+    raise ValueError("Index contains duplicate entries, cannot reshape")
+ValueError: Index contains duplicate entries, cannot reshape
