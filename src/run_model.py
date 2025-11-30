@@ -30,7 +30,7 @@ WT_SEQUENCE = "MGEKIEHPQWSYSGKTGPKYWGYLSGKTGPKYWGYLSPEYIMCAIGKNQSPIDLNEKYMVKACTR
 TRAIN_FILE_PATH = 'CA_train.xlsx'
 TEST_FILE_PATH = 'CA_test.xlsx'
 EC_FILE_PATH = 'CA_single_mutant_matrix.csv'
-tiling_path_filename = 'perfect_tiling_path.tsv'
+tiling_path_filename = 'D:/Downloads/Files to work with/meta_model/reversed_meta_tiling_path.tsv'
 
 # --- MODIFICATION 3: Add the EVC pre-processing function ---
 def preprocess_evc_data(ec_file_path, train_df, test_df):
@@ -145,3 +145,14 @@ model.train_and_predict(model='AugmentedEC', encoding='One Hot')
 # 6. Get predictions
 all_preds_df = model._predictions_df
 input_matrix = model.input_matrix
+train = train_main.copy()
+test = test_main.copy()
+train['Class'] = 'train'
+test['Class'] = 'test'
+whole = train._append(test,ignore_index=True)
+
+all_preds_df.rename(columns={'Mutation':'AminoAcid'},inplace=True)
+predictions = all_preds_df.merge(whole, how='left', on='AminoAcid')
+predictions['Error'] = np.abs(predictions['Prediction'] - predictions['Activity'])
+median_error = predictions[predictions['Class'] == 'test']['Error'].median()
+print(f'Median Test Error: {median_error}')
