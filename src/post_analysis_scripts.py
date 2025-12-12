@@ -127,9 +127,9 @@ def analyze_protein_structure(cif_path):
 WT_SEQUENCE = "MGEKIEHPQWSYSGKTGPKYWGYLSGKTGPKYWGYLSPEYIMCAIGKNQSPIDLNEKYMVKACTRPLQINYVADAVKVLNNGHTIKVITLGKSYVVIDGRKFYLRQFHFHAPSEHTVNGEYYPFEAHFVHTDDEGNIAVIGVLFKLGKTNKELQKIWDYMPTKVGQENLLLTKVNPYLLLPKKKDYYRYNGSLTTPPCSEGVRWIIFKEPVEISAEQLNLFKEVMGFPNNRPIQPINARKILK"
 
 #PATH TO DATA DIRECTORY
-source = 'D:/Downloads/Files to work with/results'
+source = r'C:\Users\hyerc\Downloads\Files to work with\results'#'D:/Downloads/Files to work with/results'
 perfect_tiling_path = f'{source}/perfect_tiling_path.tsv'
-cif_path = 'D:/Downloads/Files to work with/results/CA_AF.cif'
+cif_path = r'C:\Users\hyerc\Downloads\Files to work with\results\CA_AF.cif'#'D:/Downloads/Files to work with/results/CA_AF.cif'
 
 mutation_regex = re.compile(r"([A-Z])(\d+)([A-Z])")
 struct_regex = re.compile(r"([A-Z]):([A-Z])([A-Z])([A-Z])(\d+)")
