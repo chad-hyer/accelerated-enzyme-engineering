@@ -187,7 +187,7 @@ sasa_df.rename(index=dict(zip(old_sasa_index,new_sasa_index)),inplace=True)
 def choice_attributes(predictions, ptDF, WT_SEQUENCE, sasa_df, distance_df):
     act_cols = ['Iteration','Source Activity','LB','Q1','Mean','Median','Q3','HB']
     activityDF = pd.DataFrame(columns=act_cols)
-    err_cols = ['Iteration','Source Error', 'Train Error','LB','Q1','Mean','Median','Q3','HB']
+    err_cols = ['Iteration','Source Error', 'Train Error','LB','Q1','Mean','Median','Q3','HB','Std']
     errorDF = pd.DataFrame(columns=err_cols)
     physical_cols = ['Iteration','Mutation','Residue Number','dPolarity','dVolume','dHydrophilicity','dCharge']
     physicalDF = pd.DataFrame(columns=physical_cols)
@@ -233,7 +233,8 @@ def choice_attributes(predictions, ptDF, WT_SEQUENCE, sasa_df, distance_df):
         iqr = q3 - q1
         lb = q1 - (1.5 * iqr)
         hb = q3 + (1.5 * iqr)
-        errorDF = errorDF._append(pd.Series(dict(zip(err_cols,[iteration,source_error,train_error,lb,q1,mean,median,q3,hb]))),ignore_index=True)
+        std = test['Error'].std()
+        errorDF = errorDF._append(pd.Series(dict(zip(err_cols,[iteration,source_error,train_error,lb,q1,mean,median,q3,hb,std]))),ignore_index=True)
         
         #Amino Acid Comparison: What kind of mutation is happening?
         aa1, rn, aa2 = mutation_regex.match(mutation).groups()

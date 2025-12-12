@@ -149,17 +149,18 @@ def recommend_top_n(model_path, evc_path, prediction_path, global_start, global_
         return None, None, None
 
     # Scan the CSV to build the Allow List
-    for val in pred_df['AminoAcid'].unique():
+    for _, row in pred_df.iterrows():
+        val = row['AminoAcid']
         wt, pos_str, mut = parse_mut_local(val)
+        if pos_str is not None:
+            wt_map[int(pos_str)] = wt
         
+        # STRICT FILTER: Only 'test' rows are candidates
+        if str(row['Class']).strip().lower() != 'test':
+            continue
+
         if pos_str is not None:
             pos = int(pos_str)
-            
-            # Save WT info for formatting later
-            wt_map[pos] = wt
-            
-            # Mark this specific mutation as VALID in our mask
-            # Check bounds first
             if global_start <= pos <= global_end:
                 pos_idx = pos - global_start
                 if mut in AA_TO_IDX:
@@ -256,11 +257,18 @@ def recommend_worst_n(model_path, evc_path, prediction_path, global_start, globa
         if m: return m.groups()
         return None, None, None
 
-    for val in pred_df['AminoAcid'].unique():
+    for _, row in pred_df.iterrows():
+        val = row['AminoAcid']
         wt, pos_str, mut = parse_mut_local(val)
         if pos_str is not None:
+            wt_map[int(pos_str)] = wt
+        
+        # STRICT FILTER: Only 'test' rows are candidates
+        if str(row['Class']).strip().lower() != 'test':
+            continue
+
+        if pos_str is not None:
             pos = int(pos_str)
-            wt_map[pos] = wt
             if global_start <= pos <= global_end:
                 pos_idx = pos - global_start
                 if mut in AA_TO_IDX:
