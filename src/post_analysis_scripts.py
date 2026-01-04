@@ -127,9 +127,9 @@ def analyze_protein_structure(cif_path):
 WT_SEQUENCE = "MGEKIEHPQWSYSGKTGPKYWGYLSGKTGPKYWGYLSPEYIMCAIGKNQSPIDLNEKYMVKACTRPLQINYVADAVKVLNNGHTIKVITLGKSYVVIDGRKFYLRQFHFHAPSEHTVNGEYYPFEAHFVHTDDEGNIAVIGVLFKLGKTNKELQKIWDYMPTKVGQENLLLTKVNPYLLLPKKKDYYRYNGSLTTPPCSEGVRWIIFKEPVEISAEQLNLFKEVMGFPNNRPIQPINARKILK"
 
 #PATH TO DATA DIRECTORY
-source = r'C:\Users\hyerc\Downloads\Files to work with\results'#'D:/Downloads/Files to work with/results'
+source = 'D:/Downloads/Files to work with/results'#r'C:\Users\hyerc\Downloads\Files to work with\results'#
 perfect_tiling_path = f'{source}/perfect_tiling_path.tsv'
-cif_path = r'C:\Users\hyerc\Downloads\Files to work with\results\CA_AF.cif'#'D:/Downloads/Files to work with/results/CA_AF.cif'
+cif_path = 'D:/Downloads/Files to work with/results/CA_AF.cif'#r'C:\Users\hyerc\Downloads\Files to work with\results\CA_AF.cif'#
 
 mutation_regex = re.compile(r"([A-Z])(\d+)([A-Z])")
 struct_regex = re.compile(r"([A-Z]):([A-Z])([A-Z])([A-Z])(\d+)")
@@ -279,16 +279,22 @@ def choice_attributes(predictions, ptDF, WT_SEQUENCE, sasa_df, distance_df):
 activityDF, errorDF, physicalDF, locationDF = choice_attributes(predictions, ptDF, WT_SEQUENCE, sasa_df, distance_df)
 
 def correlation_over_iterations(predictions):
-    corr_cols = ['Iteration','m_test','b_test','rsq_test','Spearman_test','p_test','m_train','b_train','rsq_train','Spearman_train','p_train','Median Error Test','Median Error Train']
+    corr_cols = ['Iteration','m_test','b_test','rsq_test','Spearman_test','p_test','m_train','b_train','rsq_train','Spearman_train','p_train','Median Error Test','Median Error Train','Median Error Test Transform','Median Error Train Transform']
     corrDF = pd.DataFrame(columns=corr_cols)
     for iteration, prediction in predictions.items():
         test = prediction[prediction['Class'] == 'test'].dropna()
         train = prediction[prediction['Class'] == 'train'].dropna()
-        test_m, test_b, test_rsq, test_spear, test_p = linregress(test, 'Activity', 'Prediction')
-        train_m, train_b, train_rsq, train_spear, train_p = linregress(train, 'Activity', 'Prediction')
+        test_m, test_b, test_rsq, test_spear, test_p = linregress(test, 'Prediction', 'Activity')
+        train_m, train_b, train_rsq, train_spear, train_p = linregress(train, 'Prediction', 'Activity')
         test_med = test['Error'].median()
         train_med = train['Error'].median()
-        to_append = dict(zip(corr_cols,[iteration, test_m, test_b, test_rsq, test_spear, test_p, train_m, train_b, train_rsq, train_spear, train_p, test_med, train_med]))
+        transform = (test['Prediction'] * train_m) - train_b
+        transform_error = np.abs(transform - test['Activity'])
+        transform_med = transform_error.median()
+        transform_train = (train['Prediction'] * train_m) - train_b
+        transform_error_train = np.abs(transform_train - train['Activity'])
+        transform_med_train = transform_error_train.median()
+        to_append = dict(zip(corr_cols,[iteration, test_m, test_b, test_rsq, test_spear, test_p, train_m, train_b, train_rsq, train_spear, train_p, test_med, train_med, transform_med, transform_med_train]))
         corrDF = corrDF._append(pd.Series(to_append),ignore_index=True)
     return corrDF
 

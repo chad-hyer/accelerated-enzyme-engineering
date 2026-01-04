@@ -33,8 +33,16 @@ WT_SEQUENCE = "MDQSSRYVNLALKEEDLIAGGEHVLCAYIMKPKAGYGYVATAAHFAAESSTGTNVEVCTTDDFTR
 TRAIN_FILE_PATH = '/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/RUB/RUB_train.xlsx'
 TEST_FILE_PATH = '/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/RUB/RUB_test.xlsx'
 EC_FILE_PATH = '/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/RUB/RUB_single_mutant_matrix.csv'
-OUT_DIR = '/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/RUB/spear'
+OUT_DIR = '/scratch/groups/mjewett/Chad_Hyer_Tiling_Experiment/src/RUB/transform'
 
+def linregress(df, xcol, ycol):
+    df = df[[xcol,ycol]].dropna()
+    x = df[xcol]
+    y = df[ycol]
+    slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
+    # Calculate R-squared from the r_value
+    r_squared = r_value**2
+    return slope, intercept, r_squared
 
 # --- MODIFICATION 3: Add the EVC pre-processing function ---
 def preprocess_evc_data(ec_file_path, train_df, test_df):
@@ -121,17 +129,24 @@ def process_tiled_error(mutation_name, train_main_df, test_main_df,
         all_preds_df = model._predictions_df
         if all_preds_df is None:
             return (mutation_name, np.inf, None, "Model training failed (all_preds_df is None)")
+        
+        #Pre 7. Calculate regression for training set predictions to use to transform the test set
+        train_preds = pd.merge(temp_train_df, all_preds_df, left_on='AminoAcid', right_on='Mutation')
+        slope, intercept, r_squared = linregress(train_preds, xcol='Activity', ycol='Prediction')
             
         # 7. Calculate error ONLY on the temp test set
         test_preds = pd.merge(temp_test_df, all_preds_df, left_on='AminoAcid', right_on='Mutation')
+        test_preds['Transform'] = (slope * test_preds['Prediction']) - intercept
         test_preds['Error'] = np.abs(test_preds['Activity'] - test_preds['Prediction'])
+        test_preds['Transform Error'] = np.abs(test_preds['Activity'] - test_preds['Transform'])
         median_error = np.median(test_preds['Error'])
+        transform_error = np.median(test_preds['Transform Error'])
         spear, p = stats.spearmanr(test_preds['Prediction'],test_preds['Activity'])
         
         # 8. Get params
         params = model._best_alpha # This is set by the optimized class
         
-        return (mutation_name, median_error, spear, all_preds_df, params)
+        return (mutation_name, median_error, spear, slope, intercept, r_squared, transform_error, all_preds_df, params)
     
     except Exception as e:
         tb_str = traceback.format_exc()
@@ -148,7 +163,7 @@ def main():
     os.makedirs(OUT_DIR, exist_ok=True)
     os.makedirs(os.path.join(OUT_DIR, 'ChimeraX_defattr'), exist_ok=True)
 
-    tiling_path_filename = os.path.join(OUT_DIR, 'spear_tiling_path.tsv')
+    tiling_path_filename = os.path.join(OUT_DIR, 'transform_tiling_path.tsv')
     
     # Load original data first
     try:
@@ -211,7 +226,7 @@ def main():
     if iteration_count == 0:
         try:
             with open(tiling_path_filename, 'w') as f:
-                f.write("Iteration\tBest_Mutation\tMedian_Error\tSpear\n")
+                f.write("Iteration\tBest_Mutation\tMedian_Error\tSpear\tm\tb\trsq\tTransform_Error\n")
         except Exception as e:
             print(f"CRITICAL ERROR: Could not write to log file {tiling_path_filename}. {e}")
             sys.exit(1)
@@ -256,27 +271,39 @@ def main():
         it_params = {}
         it_predictions = {}
         it_spear = {}
+        it_m = {}
+        it_b = {}
+        it_rsq = {}
+        it_te = {}
 
         failed_jobs = 0
         for res in results:
             if res is None: 
                 failed_jobs += 1
                 continue
-            mut_name, error, spear, pred_df, params = res
+            mut_name, error, spear, m, b, rsq, te, pred_df, params = res
             it_dict[mut_name] = error
             it_spear[mut_name] = spear
             it_params[mut_name] = params
             it_predictions[mut_name] = pred_df
+            it_m[mut_name] = m
+            it_b[mut_name] = b
+            it_rsq[mut_name] = rsq
+            it_te[mut_name] = te
             if error == np.inf:
                 failed_jobs += 1
 
         if failed_jobs > 0:
              print(f"Warning: {failed_jobs} parallel jobs failed (see errors above).")
 
-        best_mutation_name = max(it_spear, key=it_spear.get)
+        best_mutation_name = min(it_te, key=it_te.get)
         best_median_error = it_dict[best_mutation_name]
         best_spear = it_spear[best_mutation_name]
         best_prediction_df = it_predictions[best_mutation_name]
+        best_m = it_m[best_mutation_name]
+        best_b = it_b[best_mutation_name]
+        best_rsq = it_rsq[best_mutation_name]
+        best_te = it_te[best_mutation_name]
         
         if best_median_error == np.inf:
             print(f"Error: All {len(mutations_to_process)} parallel jobs failed. Stopping experiment.")
@@ -287,7 +314,7 @@ def main():
         # Append this iteration's result to the TSV file
         try:
             with open(tiling_path_filename, 'a') as f: # 'a' = append mode
-                f.write(f"{iteration_count}\t{best_mutation_name}\t{best_median_error}\t{best_spear}\n")
+                f.write(f"{iteration_count}\t{best_mutation_name}\t{best_median_error}\t{best_spear}\t{best_m}\t{best_b}\t{best_rsq}\t{best_te}\n")
         except Exception as e:
             print(f"Warning: Could not write to log file {tiling_path_filename}. {e}")
         
@@ -302,8 +329,16 @@ def main():
         # --- MODIFICATION: Save the sorted full error list ---
         it_dict_df = pd.DataFrame(it_spear.items(), columns=['Mutation', 'Spearman'])
         it_dict_df_error = pd.DataFrame(it_dict.items(), columns=['Mutation', 'Median_Error'])
+        it_dict_df_transform = pd.DataFrame(it_te.items(), columns=['Mutation', 'Transform_Error'])
+        it_dict_df_m = pd.DataFrame(it_m.items(), columns=['Mutation', 'm'])
+        it_dict_df_b = pd.DataFrame(it_b.items(), columns=['Mutation', 'b'])
+        it_dict_df_rsq = pd.DataFrame(it_rsq.items(), columns=['Mutation', 'rsq'])
         it_dict_df = it_dict_df.merge(it_dict_df_error,how='left',on='Mutation')
-        it_dict_df.sort_values(by='Spearman', ascending=False, inplace=True)
+        it_dict_df = it_dict_df.merge(it_dict_df_transform,how='left',on='Mutation')
+        it_dict_df = it_dict_df.merge(it_dict_df_m,how='left',on='Mutation')
+        it_dict_df = it_dict_df.merge(it_dict_df_b,how='left',on='Mutation')
+        it_dict_df = it_dict_df.merge(it_dict_df_rsq,how='left',on='Mutation')
+        it_dict_df.sort_values(by='Transform_Error', ascending=True, inplace=True)
         it_dict_path = os.path.join(iteration_dir, f'median_error_it_{iteration_count}.csv')
         it_dict_df.to_csv(it_dict_path, index=False)
         
