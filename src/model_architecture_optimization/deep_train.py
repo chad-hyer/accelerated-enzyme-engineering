@@ -127,6 +127,7 @@ def main():
     parser.add_argument('--epochs', type=int, default=200, help='Maximum epochs')
     parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--folds', type=int, default=5, help='Number of CV folds')
+    parser.add_argument('--workers', type=int, default=0, help='Number of data loading workers')
     args = parser.parse_args()
 
     # --- 1. Recreate Configuration Grid ---
@@ -188,8 +189,10 @@ def main():
         train_subsampler = SubsetRandomSampler(train_ids)
         val_subsampler = SubsetRandomSampler(val_ids)
         
-        train_loader = DataLoader(full_dataset, batch_size=args.batch_size, sampler=train_subsampler)
-        val_loader = DataLoader(full_dataset, batch_size=args.batch_size, sampler=val_subsampler)
+        train_loader = DataLoader(full_dataset, batch_size=args.batch_size, 
+                                  sampler=train_subsampler, num_workers=args.workers)
+        val_loader = DataLoader(full_dataset, batch_size=args.batch_size, 
+                                sampler=val_subsampler, num_workers=args.workers)
         
         # Re-Initialize Model for Training (Reset weights)
         if args.style == 'expansion':

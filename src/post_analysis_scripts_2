@@ -292,8 +292,8 @@ def correlation_over_iterations(predictions):
     for iteration, prediction in predictions.items():
         test = prediction[prediction['Class'] == 'test'].dropna()
         train = prediction[prediction['Class'] == 'train'].dropna()
-        test_m, test_b, test_rsq, test_spear, test_p = linregress(test, 'Prediction', 'Activity')
-        train_m, train_b, train_rsq, train_spear, train_p = linregress(train, 'Prediction', 'Activity')
+        test_m, test_b, test_rsq, test_spear, test_p = linregress(test, 'Activity', 'Prediction')
+        train_m, train_b, train_rsq, train_spear, train_p = linregress(train, 'Activity', 'Prediction')
         test_med = test['Error'].median()
         train_med = train['Error'].median()
         transform = (test['Prediction'] * train_m) - train_b
@@ -377,7 +377,7 @@ for iteration, prediction in predictions.items():
     # Run optimization
     res = find_best_thresholds(
         prediction, 
-        truth_col='Classification', # Replace with your column name
+        truth_col='Activity', # Replace with your column name
         pred_col='Prediction' # Replace with your column name
     )
     
