@@ -377,7 +377,7 @@ for iteration, prediction in predictions.items():
     # Run optimization
     res = find_best_thresholds(
         prediction, 
-        truth_col='Classification', # Replace with your column name
+        truth_col='Activity', # Replace with your column name
         pred_col='Prediction' # Replace with your column name
     )
     
