@@ -284,8 +284,8 @@ def correlation_over_iterations(predictions):
     for iteration, prediction in predictions.items():
         test = prediction[prediction['Class'] == 'test'].dropna()
         train = prediction[prediction['Class'] == 'train'].dropna()
-        test_m, test_b, test_rsq, test_spear, test_p = linregress(test, 'Activity', 'Prediction')
-        train_m, train_b, train_rsq, train_spear, train_p = linregress(train, 'Activity', 'Prediction')
+        test_m, test_b, test_rsq, test_spear, test_p = linregress(test, 'Prediction', 'Activity')
+        train_m, train_b, train_rsq, train_spear, train_p = linregress(train, 'Prediction', 'Activity')
         test_med = test['Error'].median()
         train_med = train['Error'].median()
         to_append = dict(zip(corr_cols,[iteration, test_m, test_b, test_rsq, test_spear, test_p, train_m, train_b, train_rsq, train_spear, train_p, test_med, train_med]))
